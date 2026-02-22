@@ -1,6 +1,6 @@
 # Setup Guide: Firebase Auth + MySQL (Amazon RDS)
 
-This backend uses Firebase Authentication for auth and MySQL on Amazon RDS for data persistence, with raw SQL queries via the `mysql2` package.
+This backend uses Firebase Authentication for auth and MySQL on Amazon RDS for data persistence, with raw SQL queries via the `mysql2` package (connection pool).
 
 ## Architecture
 
@@ -10,6 +10,7 @@ This backend uses Firebase Authentication for auth and MySQL on Amazon RDS for d
 ### Database
 - **MySQL on Amazon RDS** - User profile storage
 - **Raw SQL** - Parameterized queries via `mysql2/promise`
+- **Connection Pool** - Shared pool of connections (no per-request open/close overhead)
 - **Config** - RDS credentials stored in `.ini` file
 
 ## Quick Start
@@ -35,10 +36,7 @@ npm install
 
 ### 3. Set Up Amazon RDS
 
-1. Go to the AWS RDS Console
-2. Create a MySQL database instance
-3. Note the endpoint, port, username, password, and database name
-4. Make sure your security group allows inbound connections on port 3306
+[@Vihaan cook here]
 
 ### 4. Configure Environment Variables
 
@@ -56,9 +54,9 @@ FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"your-proje
 
 # Server config
 PORT=5050
-FRONTEND_URL=http://localhost:3001
-API_URL=http://localhost:5050
+FRONTEND_URL=https://your-production-url.com
 FRONTEND_URL_DEV=http://localhost:3001
+API_URL=http://localhost:5050
 NODE_ENV=development
 ```
 
@@ -100,7 +98,7 @@ Server runs on `http://localhost:5050`
 
 ## Database Schema
 
-The `users` table:
+The default `users` table (edit to your needs):
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
@@ -121,9 +119,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 ## API Endpoints
 
-### Authentication
-
-#### Sign Up
+### Sign Up
 ```bash
 POST /auth/signup
 Content-Type: application/json
@@ -139,9 +135,9 @@ Content-Type: application/json
 
 **Process:**
 1. Creates user in Firebase Auth
-2. Stores profile in MySQL via raw SQL
+2. Stores profile in MySQL
 
-#### Login
+### Login
 ```bash
 POST /auth/login
 Content-Type: application/json
@@ -165,12 +161,17 @@ await fetch('/auth/login', {
 });
 ```
 
-#### Google OAuth
+### Google OAuth Token Sync
 ```bash
-GET /auth/google
+POST /auth/token
+Content-Type: application/json
+
+{
+  "idToken": "firebase-id-token-from-google-oauth"
+}
 ```
 
-**Note**: Google OAuth is handled client-side with Firebase SDK.
+Called automatically by the frontend after Google sign-in to create/confirm the user's MySQL record.
 
 **Frontend Example**:
 ```javascript
@@ -187,19 +188,24 @@ await fetch('/auth/token', {
 });
 ```
 
-#### Get Current User
+### Get Current User
 ```bash
 GET /auth/me
 Authorization: Bearer <firebase-id-token>
+
+# or
+
+GET /auth/profile
+Authorization: Bearer <firebase-id-token>
 ```
 
-#### Get All Users (Protected)
+### Get All Users (Protected)
 ```bash
 GET /auth/users
 Authorization: Bearer <firebase-id-token>
 ```
 
-#### Logout
+### Logout
 ```bash
 POST /auth/logout
 ```
@@ -213,7 +219,7 @@ js-backend/
 ├── src/
 │   ├── config/
 │   │   ├── firebase.js        # Firebase Admin SDK
-│   │   └── database.js        # MySQL connection helper (get_dbConn)
+│   │   └── database.js        # MySQL connection pool
 │   ├── controllers/
 │   │   └── authController.js  # Auth logic (raw SQL queries)
 │   ├── middleware/
@@ -243,7 +249,7 @@ js-backend/
 
 ## Notes
 
-- Each request opens a new database connection and closes it when done
+- A connection pool is shared across all requests (configured for up to 10 connections)
 - All queries use parameterized placeholders (`?`) to prevent SQL injection
 - Firebase handles authentication; MySQL stores user profiles
 - The `.ini` config file is gitignored to protect credentials

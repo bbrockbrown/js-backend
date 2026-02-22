@@ -3,8 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let firebaseApp;
-
 try {
   const serviceAccount = JSON.parse(
     process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}'
@@ -16,7 +14,7 @@ try {
     );
   }
 
-  firebaseApp = admin.initializeApp({
+  admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
 
@@ -27,4 +25,3 @@ try {
 }
 
 export default admin;
-export { firebaseApp };

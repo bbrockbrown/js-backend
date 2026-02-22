@@ -30,13 +30,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-if (process.env.NODE_ENV !== 'production') {
-  console.log('CORS Configuration:', {
-    origin: process.env.FRONTEND_URL,
-    credentials: true,
-  });
-}
-
 app.use(cookieParser());
 app.use(express.json());
 

@@ -1,10 +1,8 @@
 import admin from '../config/firebase.js';
-import { get_dbConn } from '../config/database.js';
+import { pool } from '../config/database.js';
 
 const authController = {
   async signup(req, res) {
-    let dbConn;
-
     try {
       const { email, password, username, firstname, lastname } = req.body;
 
@@ -20,14 +18,12 @@ const authController = {
         displayName: username,
       });
 
-      dbConn = await get_dbConn();
-
       const sql = `
         INSERT INTO users (firebase_uid, username, email, firstname, lastname)
         VALUES (?, ?, ?, ?, ?);
       `;
 
-      const [result] = await dbConn.execute(sql, [
+      const [result] = await pool.execute(sql, [
         userRecord.uid,
         username,
         email,
@@ -55,13 +51,6 @@ const authController = {
         return res.status(400).json({ error: 'Username already exists' });
       }
       res.status(500).json({ error: 'Internal server error' });
-    } finally {
-      try {
-        await dbConn?.end();
-      } catch (err) { 
-        /* ignore */
-        console.log("could not close DB connection", err.message);
-      }
     }
   },
 
@@ -96,8 +85,6 @@ const authController = {
   },
 
   async getMe(req, res) {
-    let dbConn;
-
     try {
       const token =
         req.cookies.session || req.headers.authorization?.split(' ')[1];
@@ -108,15 +95,13 @@ const authController = {
 
       const decodedToken = await admin.auth().verifyIdToken(token);
 
-      dbConn = await get_dbConn();
-
       const sql = `
         SELECT id, firebase_uid AS firebaseUid, username, email, firstname, lastname
         FROM users
         WHERE firebase_uid = ?;
       `;
 
-      const [rows] = await dbConn.execute(sql, [decodedToken.uid]);
+      const [rows] = await pool.execute(sql, [decodedToken.uid]);
 
       if (rows.length > 0) {
         return res.json(rows[0]);
@@ -130,19 +115,17 @@ const authController = {
     } catch (error) {
       console.error('ME endpoint error:', error);
       res.status(401).json({ error: 'Authentication failed' });
-    } finally {
-      try {
-        await dbConn?.end();
-      } catch (err) {
-        /* ignore */
-        console.log("could not close DB connection", err.message);
-      }
     }
   },
 
   async logout(req, res) {
     try {
-      res.clearCookie('session');
+      res.clearCookie('session', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+      });
       res.json({ message: 'Logged out successfully' });
     } catch (error) {
       console.error('Logout error:', error);
@@ -151,114 +134,24 @@ const authController = {
   },
 
   async getAllUsers(req, res) {
-    let dbConn;
-
     try {
-      dbConn = await get_dbConn();
-
       const sql = `
         SELECT username, email, firstname, lastname
         FROM users
         ORDER BY username ASC;
       `;
 
-      const [rows] = await dbConn.execute(sql);
+      const [rows] = await pool.execute(sql);
 
       res.status(200).json(rows);
     } catch (error) {
       console.error('Get all users error:', error);
       res.status(500).json({ error: 'Internal server error' });
-    } finally {
-      try {
-        await dbConn?.end();
-      } catch (err) {
-        /* ignore */
-        console.log("could not close DB connection", err.message);
-      }
     }
   },
 
-  async googleAuth(req, res) {
-    try {
-      res.status(200).json({
-        message:
-          'Google OAuth should be handled on the client side using Firebase SDK',
-        instructions:
-          'Use signInWithPopup(auth, googleProvider) on the frontend',
-      });
-    } catch (error) {
-      console.error('Google auth error:', error);
-      res.status(500).json({ error: 'Failed to initialize Google auth' });
-    }
-  },
-
-  async handleOAuthCallback(req, res) {
-    let dbConn;
-
-    try {
-      const { idToken } = req.body;
-
-      if (!idToken) {
-        return res.status(400).json({ error: 'ID token is required' });
-      }
-
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-
-      dbConn = await get_dbConn();
-
-      const findSql = `SELECT id FROM users WHERE firebase_uid = ?;`;
-      const [existingRows] = await dbConn.execute(findSql, [decodedToken.uid]);
-
-      if (existingRows.length === 0) {
-        const username =
-          decodedToken.name?.replace(/\s+/g, '_').toLowerCase() ||
-          decodedToken.email?.split('@')[0] ||
-          `user_${decodedToken.uid.substring(0, 8)}`;
-
-        const insertSql = `
-          INSERT INTO users (firebase_uid, username, email, firstname, lastname)
-          VALUES (?, ?, ?, ?, ?);
-        `;
-
-        await dbConn.execute(insertSql, [
-          decodedToken.uid,
-          username,
-          decodedToken.email,
-          decodedToken.name?.split(' ')[0] || null,
-          decodedToken.name?.split(' ').slice(1).join(' ') || null,
-        ]);
-      }
-
-      res.cookie('session', idToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 3600 * 1000,
-        path: '/',
-      });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('OAuth callback error:', error);
-      if (error.code === 'ER_DUP_ENTRY') {
-        return res
-          .status(400)
-          .json({ error: 'Username already exists, please choose another' });
-      }
-      res.status(500).json({ error: error.message });
-    } finally {
-      try {
-        await dbConn?.end();
-      } catch (err) {
-        /* ignore */
-        console.log("could not close DB connection", err.message);
-      }
-    }
-  },
-
+  // Called after Google OAuth (popup or redirect) to sync the Firebase user into MySQL.
   async handleToken(req, res) {
-    let dbConn;
-
     try {
       const { idToken } = req.body;
 
@@ -268,10 +161,8 @@ const authController = {
 
       const decodedToken = await admin.auth().verifyIdToken(idToken);
 
-      dbConn = await get_dbConn();
-
       const findSql = `SELECT id FROM users WHERE firebase_uid = ?;`;
-      const [existingRows] = await dbConn.execute(findSql, [decodedToken.uid]);
+      const [existingRows] = await pool.execute(findSql, [decodedToken.uid]);
 
       if (existingRows.length === 0) {
         const username =
@@ -284,7 +175,7 @@ const authController = {
           VALUES (?, ?, ?, ?, ?);
         `;
 
-        await dbConn.execute(insertSql, [
+        await pool.execute(insertSql, [
           decodedToken.uid,
           username,
           decodedToken.email,
@@ -296,7 +187,7 @@ const authController = {
       res.cookie('session', idToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: 'strict',
         maxAge: 3600 * 1000,
         path: '/',
       });
@@ -309,14 +200,7 @@ const authController = {
           .status(400)
           .json({ error: 'Username already exists, please choose another' });
       }
-      res.status(500).json({ error: error.message });
-    } finally {
-      try {
-        await dbConn?.end();
-      } catch (err) {
-        /* ignore */
-        console.log("could not close DB connection", err.message);
-      }
+      res.status(500).json({ error: 'Internal server error' });
     }
   },
 };
