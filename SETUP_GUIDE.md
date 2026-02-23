@@ -55,7 +55,7 @@ FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"your-proje
 # Server config
 PORT=5050
 FRONTEND_URL=https://your-production-url.com
-FRONTEND_URL_DEV=http://localhost:3001
+FRONTEND_URL_DEV=http://localhost:5173
 API_URL=http://localhost:5050
 NODE_ENV=development
 ```
