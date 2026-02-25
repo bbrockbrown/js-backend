@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server.js",
-    "lint": "eslint .",
+    "lint": "npx prettier --write .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
