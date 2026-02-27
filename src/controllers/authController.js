@@ -1,4 +1,5 @@
 import admin from '../config/firebase.js';
+import { userRepository } from '../repositories/index.js';
 import { pool } from '../config/database.js';
 
 const authController = {
@@ -18,29 +19,17 @@ const authController = {
         displayName: username,
       });
 
-      const sql = `
-        INSERT INTO users (firebase_uid, username, email, firstname, lastname)
-        VALUES (?, ?, ?, ?, ?);
-      `;
-
-      const [result] = await pool.execute(sql, [
-        userRecord.uid,
+      const user = await userRepository.createUser({
+        uid: userRecord.uid,
         username,
         email,
-        firstname || null,
-        lastname || null,
-      ]);
+        firstname,
+        lastname
+      })
 
       res.status(201).json({
         message: 'User created successfully',
-        user: {
-          id: result.insertId,
-          firebaseUid: userRecord.uid,
-          username,
-          email,
-          firstname: firstname || null,
-          lastname: lastname || null,
-        },
+        user
       });
     } catch (error) {
       console.error('Signup error:', error);
@@ -95,19 +84,9 @@ const authController = {
 
       const decodedToken = await admin.auth().verifyIdToken(token);
 
-      const sql = `
-        SELECT id, firebase_uid AS firebaseUid, username, email, firstname, lastname
-        FROM users
-        WHERE firebase_uid = ?;
-      `;
+      const user = await userRepository.findByUid(decodedToken.uid);
 
-      const [rows] = await pool.execute(sql, [decodedToken.uid]);
-
-      if (rows.length > 0) {
-        return res.json(rows[0]);
-      }
-
-      return res.json({
+      return res.json(user || {
         firebaseUid: decodedToken.uid,
         email: decodedToken.email,
         username: decodedToken.email?.split('@')[0] || 'user',
@@ -135,15 +114,9 @@ const authController = {
 
   async getAllUsers(req, res) {
     try {
-      const sql = `
-        SELECT username, email, firstname, lastname
-        FROM users
-        ORDER BY username ASC;
-      `;
+      const users = await userRepository.getAll();
 
-      const [rows] = await pool.execute(sql);
-
-      res.status(200).json(rows);
+      res.status(200).json(users);
     } catch (error) {
       console.error('Get all users error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -161,28 +134,15 @@ const authController = {
 
       const decodedToken = await admin.auth().verifyIdToken(idToken);
 
-      const findSql = `SELECT id FROM users WHERE firebase_uid = ?;`;
-      const [existingRows] = await pool.execute(findSql, [decodedToken.uid]);
-
-      if (existingRows.length === 0) {
-        const username =
-          decodedToken.name?.replace(/\s+/g, '_').toLowerCase() ||
+      const user = await userRepository.upsertUser({
+        uid: decodedToken.uid,
+        username: decodedToken.name?.replace(/\s+/g, '_').toLowerCase() ||
           decodedToken.email?.split('@')[0] ||
-          `user_${decodedToken.uid.substring(0, 8)}`;
-
-        const insertSql = `
-          INSERT INTO users (firebase_uid, username, email, firstname, lastname)
-          VALUES (?, ?, ?, ?, ?);
-        `;
-
-        await pool.execute(insertSql, [
-          decodedToken.uid,
-          username,
-          decodedToken.email,
-          decodedToken.name?.split(' ')[0] || null,
-          decodedToken.name?.split(' ').slice(1).join(' ') || null,
-        ]);
-      }
+          `user_${decodedToken.uid.substring(0, 8)}`,
+        email: decodedToken.email,
+        firstname: decodedToken.name?.split(' ')[0] || null,
+        lastname: decodedToken.name?.split(' ').slice(1).join(' ') || null,
+      })
 
       res.cookie('session', idToken, {
         httpOnly: true,
@@ -192,7 +152,7 @@ const authController = {
         path: '/',
       });
 
-      res.json({ success: true });
+      res.json({ success: true, user });
     } catch (error) {
       console.error('Token handling error:', error);
       if (error.code === 'ER_DUP_ENTRY') {
