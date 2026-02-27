@@ -1,6 +1,5 @@
 import admin from '../config/firebase.js';
-import { userRepository } from '../repositories/index.js';
-import { pool } from '../config/database.js';
+import userRepository from '../repositories/userRepository.js';
 
 const authController = {
   async signup(req, res) {
@@ -36,7 +35,7 @@ const authController = {
       if (error.code === 'auth/email-already-exists') {
         return res.status(400).json({ error: 'Email already in use' });
       }
-      if (error.code === 'ER_DUP_ENTRY') {
+      if (error.code === '23505' || error.code === 'ER_DUP_ENTRY') {
         return res.status(400).json({ error: 'Username already exists' });
       }
       res.status(500).json({ error: 'Internal server error' });
@@ -97,7 +96,7 @@ const authController = {
     }
   },
 
-  async logout(req, res) {
+  async logout(_req, res) {
     try {
       res.clearCookie('session', {
         httpOnly: true,
@@ -112,7 +111,7 @@ const authController = {
     }
   },
 
-  async getAllUsers(req, res) {
+  async getAllUsers(_req, res) {
     try {
       const users = await userRepository.getAll();
 
@@ -123,7 +122,7 @@ const authController = {
     }
   },
 
-  // Called after Google OAuth (popup or redirect) to sync the Firebase user into MySQL.
+  // Called after Google OAuth (popup or redirect) to sync the Firebase user into the database.
   async handleToken(req, res) {
     try {
       const { idToken } = req.body;
@@ -155,7 +154,7 @@ const authController = {
       res.json({ success: true, user });
     } catch (error) {
       console.error('Token handling error:', error);
-      if (error.code === 'ER_DUP_ENTRY') {
+      if (error.code === '23505' || error.code === 'ER_DUP_ENTRY') {
         return res
           .status(400)
           .json({ error: 'Username already exists, please choose another' });

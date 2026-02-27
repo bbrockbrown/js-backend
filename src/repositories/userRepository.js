@@ -1,11 +1,12 @@
-// Switch this import to swap between AWS (MySQL) and Supabase (Postgres)
-import provider from './providers/mysqlProvider.js'; 
-// import provider from './providers/postgresProvider.js';
+// Switch this import to swap between Supabase (Postgres) and AWS (MySQL)
+import provider from '../providers/postgresProvider.js';
+// import provider from '../providers/mysqlProvider.js';
 
 const userRepository = {
   createUser: (userData) => provider.createUser(userData),
   findByUid: (uid) => provider.findByUid(uid),
   getAll: () => provider.getAll(),
+  upsertUser: (userData) => provider.upsertUser(userData),
 };
 
 export default userRepository;

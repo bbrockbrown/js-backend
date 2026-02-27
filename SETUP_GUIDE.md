@@ -1,17 +1,17 @@
-# Setup Guide: Firebase Auth + MySQL (Amazon RDS)
+# Setup Guide: Firebase Auth + Supabase (PostgreSQL)
 
-This backend uses Firebase Authentication for auth and MySQL on Amazon RDS for data persistence, with raw SQL queries via the `mysql2` package (connection pool).
+This backend uses **Firebase Authentication** for identity and **Supabase
+(PostgreSQL)** for data persistence. If your team later needs to migrate to AWS
+RDS (MySQL), see [Switching to AWS RDS](#switching-to-aws-rds) at the bottom of
+this guide.
 
 ## Architecture
 
-### Authentication
-- **Firebase Authentication** - Email/password and Google OAuth
+- **Firebase Authentication** — Email/password and Google OAuth sign-in
+- **Supabase** — Hosted PostgreSQL database (free tier available)
+- **Raw SQL** — Parameterized queries via the `pg` package (connection pool)
 
-### Database
-- **MySQL on Amazon RDS** - User profile storage
-- **Raw SQL** - Parameterized queries via `mysql2/promise`
-- **Connection Pool** - Shared pool of connections (no per-request open/close overhead)
-- **Config** - RDS credentials stored in `.ini` file
+---
 
 ## Quick Start
 
@@ -21,26 +21,51 @@ This backend uses Firebase Authentication for auth and MySQL on Amazon RDS for d
 npm install
 ```
 
+---
+
 ### 2. Set Up Firebase
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project
-3. Enable Authentication:
-   - Go to Authentication > Sign-in method
-   - Enable **Email/Password**
-   - Enable **Google** (optional, for OAuth)
-4. Generate Service Account Key:
-   - Go to **Project Settings** > **Service Accounts**
-   - Click **Generate New Private Key**
-   - Download the JSON file
+1. Go to the [Firebase Console](https://console.firebase.google.com/) and create
+   a new project.
+2. Click on Project Overview -> "Add app" -> Web app (the </> icon) (name it
+   something meaningful)
+   - Leave "Firebase Hosting" unchecked for now, we will deal with that later
+     when we deploy.
+   - Click on "register app"
+3. Follow copy/paste steps (paste relevant vars into frontend `.env`)
+4. In the left sidebar, go to **Build (dropdown) -> Authentication -> "Get
+   Started" -> Sign-in method** and enable:
+   - **Email/Password (do not enable passwordless sign-in)**
+   - **Google** (optional, for OAuth sign-in)
+     - "Public-facing name for project": can be anything, just remember it
+     - "Support email for project": Whoever is setting up Firebase
+5. Generate a service account key:
+   - Go to **Project Settings** (gear icon) → **Service Accounts**
+   - Click **Generate New Private Key** (ensure Node is selected) and download
+     the JSON file
+   - You'll paste the contents of this file into your `.env` in the next step
 
-### 3. Set Up Amazon RDS
+---
 
-[@Vihaan cook here]
+### 3. Set Up Supabase
+
+1. Go to [supabase.com](https://supabase.com) and create a free account.
+2. Click **New project** and fill in a name, database password, and region (no
+   automatic RLS).
+3. Once the project is ready, go to **Project Settings → Database**.
+4. Click on **Connect** at top w/ plug icon, under **Connection string**, select
+   the **URI** tab and copy the connection string. It looks like:
+   ```
+   postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+   ```
+   You'll paste this into your `.env` as `DATABASE_URL`.
+5. Create the `users` table:
+   - In your Supabase project, go to the **SQL Editor** (left sidebar).
+   - Paste the contents of `sql/create_tables.sql` and click **Run**.
+
+---
 
 ### 4. Configure Environment Variables
-
-Create `.env` file:
 
 ```bash
 cp .env.example .env
@@ -49,8 +74,11 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# Paste your entire Firebase service account JSON
+# Paste the entire contents of your Firebase service account JSON (on one line)
 FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"your-project",...}'
+
+# Supabase connection string (from Project Settings → Database → URI)
+DATABASE_URL=postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
 
 # Server config
 PORT=5050
@@ -60,67 +88,44 @@ API_URL=http://localhost:5050
 NODE_ENV=development
 ```
 
-### 5. Configure RDS Connection
+---
 
-```bash
-cp rds-config.ini.example rds-config.ini
-```
-
-Edit `rds-config.ini`:
-
-```ini
-[rds]
-endpoint = your-rds-endpoint.region.rds.amazonaws.com
-port_number = 3306
-region_name = us-east-2
-user_name = your_username
-user_pwd = your_password
-db_name = your_database_name
-```
-
-### 6. Create Database Tables
-
-Run the SQL schema against your RDS instance:
-
-```bash
-mysql -h <endpoint> -u <user> -p <dbname> < sql/create_tables.sql
-```
-
-Or paste the contents of `sql/create_tables.sql` into MySQL Workbench.
-
-### 7. Start the Server
+### 5. Start the Server
 
 ```bash
 npm run dev
 ```
 
-Server runs on `http://localhost:5050`
+Server runs on `http://localhost:5050`.
+
+---
 
 ## Database Schema
 
-The default `users` table (edit to your needs):
+The default `users` table (`sql/create_tables.sql`):
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
-  id            INT AUTO_INCREMENT PRIMARY KEY,
-  firebase_uid  VARCHAR(128) NOT NULL,
-  username      VARCHAR(50)  NOT NULL,
-  email         VARCHAR(255) NOT NULL,
-  firstname     VARCHAR(100) DEFAULT NULL,
-  lastname      VARCHAR(100) DEFAULT NULL,
-  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-  UNIQUE KEY idx_firebase_uid (firebase_uid),
-  UNIQUE KEY idx_username     (username),
-  UNIQUE KEY idx_email        (email)
+  id           SERIAL PRIMARY KEY,
+  firebase_uid VARCHAR(128) NOT NULL UNIQUE,
+  username     VARCHAR(50)  NOT NULL UNIQUE,
+  email        VARCHAR(255) NOT NULL UNIQUE,
+  firstname    VARCHAR(100) DEFAULT NULL,
+  lastname     VARCHAR(100) DEFAULT NULL,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 ```
+
+Edit this schema to fit your project's data model.
+
+---
 
 ## API Endpoints
 
 ### Sign Up
-```bash
+
+```
 POST /auth/signup
 Content-Type: application/json
 
@@ -133,12 +138,14 @@ Content-Type: application/json
 }
 ```
 
-**Process:**
-1. Creates user in Firebase Auth
-2. Stores profile in MySQL
+**Process:** Creates the user in Firebase Auth, then stores their profile in the
+database.
+
+---
 
 ### Login
-```bash
+
+```
 POST /auth/login
 Content-Type: application/json
 
@@ -147,7 +154,8 @@ Content-Type: application/json
 }
 ```
 
-**Frontend Example** (using Firebase SDK):
+**Frontend example** (using Firebase SDK):
+
 ```javascript
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -157,12 +165,15 @@ const idToken = await userCredential.user.getIdToken();
 await fetch('/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ idToken })
+  body: JSON.stringify({ idToken }),
 });
 ```
 
+---
+
 ### Google OAuth Token Sync
-```bash
+
+```
 POST /auth/token
 Content-Type: application/json
 
@@ -171,11 +182,13 @@ Content-Type: application/json
 }
 ```
 
-Called automatically by the frontend after Google sign-in to create/confirm the user's MySQL record.
+Called automatically by the frontend after Google sign-in to create or confirm
+the user's database record.
 
-**Frontend Example**:
+**Frontend example**:
+
 ```javascript
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const provider = new GoogleAuthProvider();
 const result = await signInWithPopup(auth, provider);
@@ -184,12 +197,15 @@ const idToken = await result.user.getIdToken();
 await fetch('/auth/token', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ idToken })
+  body: JSON.stringify({ idToken }),
 });
 ```
 
+---
+
 ### Get Current User
-```bash
+
+```
 GET /auth/me
 Authorization: Bearer <firebase-id-token>
 
@@ -199,57 +215,161 @@ GET /auth/profile
 Authorization: Bearer <firebase-id-token>
 ```
 
+---
+
 ### Get All Users (Protected)
-```bash
+
+```
 GET /auth/users
 Authorization: Bearer <firebase-id-token>
 ```
 
+---
+
 ### Logout
-```bash
+
+```
 POST /auth/logout
 ```
+
+---
 
 ## Project Structure
 
 ```
 js-backend/
 ├── sql/
-│   └── create_tables.sql      # MySQL DDL
+│   ├── create_tables.sql          # Supabase / PostgreSQL schema (default)
+│   └── create_tables_mysql.sql    # AWS RDS / MySQL schema (for migration)
 ├── src/
 │   ├── config/
-│   │   ├── firebase.js        # Firebase Admin SDK
-│   │   └── database.js        # MySQL connection pool
+│   │   ├── firebase.js            # Firebase Admin SDK initialization
+│   │   └── database.js            # DB connection pool (Supabase default)
 │   ├── controllers/
-│   │   └── authController.js  # Auth logic (raw SQL queries)
+│   │   └── authController.js      # Auth endpoint logic
 │   ├── middleware/
-│   │   └── authMiddleware.js  # Firebase token verification
+│   │   └── authMiddleware.js      # Firebase token verification
+│   ├── providers/
+│   │   ├── postgresProvider.js    # Supabase / PostgreSQL queries (default)
+│   │   └── mysqlProvider.js       # AWS RDS / MySQL queries (for migration)
+│   ├── repositories/
+│   │   └── userRepository.js      # Adapter — swap providers here
 │   ├── routes/
-│   │   └── authRoutes.js      # API routes
-│   └── server.js              # Express server
-├── .env.example               # Environment template
-├── rds-config.ini.example     # RDS config template
-├── package.json
-└── SETUP_GUIDE.md
+│   │   └── authRoutes.js          # Express route definitions
+│   └── server.js                  # Express app + middleware setup
+├── .env.example                   # Environment variable template
+├── rds-config.ini.example         # AWS RDS config template (for migration)
+└── package.json
 ```
+
+---
+
+## Switching to AWS RDS
+
+When your team is ready to migrate from Supabase to AWS RDS (MySQL), make the
+following changes:
+
+### 1. Install the RDS config file
+
+```bash
+cp rds-config.ini.example rds-config.ini
+```
+
+Fill in your RDS credentials:
+
+```ini
+[rds]
+endpoint    = your-rds-endpoint.region.rds.amazonaws.com
+port_number = 3306
+region_name = us-east-2
+user_name   = your_username
+user_pwd    = your_password
+db_name     = your_database_name
+```
+
+### 2. Create the MySQL table
+
+Run the MySQL schema against your RDS instance:
+
+```bash
+mysql -h <endpoint> -u <user> -p <dbname> < sql/create_tables_mysql.sql
+```
+
+Or paste the contents of `sql/create_tables_mysql.sql` into MySQL Workbench.
+
+### 3. Switch the database connection — `src/config/database.js`
+
+The file has two clearly marked sections. Keep the `dotenv` lines at the top
+as-is, then comment out the Postgres block and uncomment the MySQL block:
+
+```js
+import dotenv from 'dotenv';
+// keep this
+import pg from 'pg';
+
+// comment this out ↓
+
+// ...
+
+// === AWS RDS / MySQL ===
+// import fs from 'fs';      // uncomment these ↓
+// import ini from 'ini';
+// import mysql2 from 'mysql2/promise';
+// ...
+// export { pool };
+```
+
+### 4. Switch the provider — `src/repositories/userRepository.js`
+
+```js
+// Comment out:
+// import provider from '../providers/postgresProvider.js';
+// Uncomment:
+import provider from '../providers/mysqlProvider.js';
+```
+
+That's it. The repository, controllers, and routes are all provider-agnostic and
+require no other changes.
+
+---
 
 ## Troubleshooting
 
-### Connection refused to RDS
-- Check your RDS security group allows inbound on port 3306
-- Verify the endpoint and credentials in `rds-config.ini`
-- Make sure the RDS instance is running and publicly accessible (or you're on the same VPC)
+### Supabase connection refused
+
+- Double-check that `DATABASE_URL` in `.env` matches the URI exactly from
+  Supabase project settings.
+- Make sure you replaced `[YOUR-PASSWORD]` with your actual database password.
+- If the password contains special characters, URL-encode them (e.g., `@` →
+  `%40`).
+
+### AWS RDS connection refused
+
+- Verify your RDS security group allows inbound traffic on port 3306 from your
+  IP.
+- Confirm the endpoint and credentials in `rds-config.ini` are correct.
+- Make sure the RDS instance is running and publicly accessible (or you're on
+  the same VPC).
 
 ### Duplicate entry errors
-- `ER_DUP_ENTRY` means a unique constraint was violated (email, username, or firebase_uid already exists)
+
+- A unique constraint was violated — email, username, or `firebase_uid` already
+  exists in the database.
+- PostgreSQL: check for `duplicate key value violates unique constraint`
+- MySQL: check for `ER_DUP_ENTRY`
 
 ### Firebase errors
-- `auth/email-already-exists` - Email is already registered in Firebase
-- Verify `FIREBASE_SERVICE_ACCOUNT_KEY` in `.env` is valid JSON
+
+- `auth/email-already-exists` — Email is already registered in Firebase.
+- Verify `FIREBASE_SERVICE_ACCOUNT_KEY` in `.env` is valid JSON (the whole JSON
+  on one line, wrapped in single quotes).
+
+---
 
 ## Notes
 
-- A connection pool is shared across all requests (configured for up to 10 connections)
-- All queries use parameterized placeholders (`?`) to prevent SQL injection
-- Firebase handles authentication; MySQL stores user profiles
-- The `.ini` config file is gitignored to protect credentials
+- A connection pool is shared across all requests (configured for up to 10
+  connections).
+- All queries use parameterized placeholders to prevent SQL injection.
+- Firebase handles authentication; the database stores user profile data.
+- Sensitive config files (`.env`, `*.ini`) are gitignored — never commit them.

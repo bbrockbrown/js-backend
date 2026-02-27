@@ -1,4 +1,4 @@
-import { pgPool } from '../../config/database.js'; // Assuming a pg pool config
+import { pgPool } from '../config/database.js';
 
 export default {
   async createUser({ uid, username, email, firstname, lastname }) {
@@ -14,11 +14,10 @@ export default {
       ON CONFLICT (firebase_uid) DO UPDATE SET
         email = EXCLUDED.email,
         firstname = EXCLUDED.firstname,
-        lastname = EXCLUDED.lastname
-      RETURNING id, firebase_uid AS uid, username, email, firstname, lastname;
+        lastname = EXCLUDED.lastname;
     `;
-    const { rows } = await pgPool.query(sql, [uid, username, email, firstname, lastname]);
-    return rows[0] || null;
+    await pgPool.query(sql, [uid, username, email, firstname, lastname]);
+    return this.findByUid(uid);
   },
 
   async findByUid(uid) {

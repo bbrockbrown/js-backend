@@ -1,4 +1,4 @@
-import { pool } from '../../config/database.js';
+import { pool } from '../config/database.js';
 
 export default {
   async createUser({ uid, username, email, firstname, lastname }) {
