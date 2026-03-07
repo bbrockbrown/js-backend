@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import express from 'express';
 
 import authRoutes from './routes/authRoutes.js';
+import donationRoutes from './routes/donationRoutes.js';
+import donorRoutes from './routes/donorRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js'
 
 dotenv.config();
 
@@ -39,6 +42,9 @@ app.use((req, res, next) => {
 });
 
 app.use('/auth', authRoutes);
+app.use('/dashboard', dashboardRoutes);
+app.use('/donations', donationRoutes);
+app.use('/donors', donorRoutes);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });

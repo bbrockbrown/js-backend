@@ -15,3 +15,24 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY idx_username     (username),
   UNIQUE KEY idx_email        (email)
 );
+
+CREATE TABLE IF NOT EXISTS donations (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  donor_name      VARCHAR(255),
+  donor_email     VARCHAR(255),
+  amount          DECIMAL(10,2),
+  donation_date   date,
+  receipt_status  VARCHAR(50)
+);
+
+CREATE TABLE IF NOT EXISTS donors (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  name            VARCHAR(255) NOT NULL,
+  email           VARCHAR(255) UNIQUE,
+  address         VARCHAR(255),
+  phone           VARCHAR(20),
+  total_donations DECIMAL(10,2) DEFAULT 0,
+  donation_count  INT DEFAULT 0,
+  most_recent     date
+);
+    
