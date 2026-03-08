@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   id           SERIAL PRIMARY KEY,
   title        VARCHAR(255) NOT NULL,
   category     VARCHAR(120) NOT NULL,
+  tags         TEXT[] NOT NULL DEFAULT '{}',
   description  TEXT NOT NULL,
   votes        INTEGER NOT NULL DEFAULT 0,
   submitted_by VARCHAR(150) NOT NULL DEFAULT 'Anonymous Resident',

@@ -1,11 +1,11 @@
 import express from 'express';
 
-import dashboardController from '../controllers/dashboardController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import proposalsController from '../controllers/proposalsController.js';
 
 const router = express.Router();
 
-router.use(authMiddleware);
-router.get('/', dashboardController.getProposals);
+router.get('/', proposalsController.getProposals);
+router.get('/tags', proposalsController.getProposalTags);
+router.get('/:id', proposalsController.getProposalById);
 
 export default router;

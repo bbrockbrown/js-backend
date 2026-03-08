@@ -119,20 +119,6 @@ const dashboardService = {
       categories: buildCategoryDistribution(categoryCounts, totalCount),
     };
   },
-
-  async getProposals() {
-    const items = await proposalRepository.getAll();
-
-    return {
-      items,
-      pagination: {
-        page: 1,
-        limit: items.length,
-        totalItems: items.length,
-        totalPages: 1,
-      },
-    };
-  },
 };
 
 export default dashboardService;

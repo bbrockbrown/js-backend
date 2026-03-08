@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   title         VARCHAR(255) NOT NULL,
   category      VARCHAR(120) NOT NULL,
+  tags          JSON NULL,
   description   TEXT NOT NULL,
   votes         INT NOT NULL DEFAULT 0,
   submitted_by  VARCHAR(150) NOT NULL DEFAULT 'Anonymous Resident',

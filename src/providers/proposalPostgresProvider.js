@@ -1,7 +1,40 @@
 import { pgPool } from '../config/database.js';
 
+const buildWhereClause = ({ search, category, status, tag }, values) => {
+  const clauses = [];
+
+  if (search) {
+    values.push(`%${search}%`);
+    const idx = values.length;
+    clauses.push(
+      `(title ILIKE $${idx} OR description ILIKE $${idx} OR submitted_by ILIKE $${idx})`
+    );
+  }
+
+  if (category && category.toLowerCase() !== 'all') {
+    values.push(category);
+    clauses.push(`category = $${values.length}`);
+  }
+
+  if (status && status.toLowerCase() !== 'all') {
+    values.push(status);
+    clauses.push(`status = $${values.length}`);
+  }
+
+  if (tag && tag.toLowerCase() !== 'all') {
+    values.push(tag);
+    clauses.push(`$${values.length} = ANY(tags)`);
+  }
+
+  return clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+};
+
 const proposalPostgresProvider = {
-  async getAll() {
+  async getAll(filters = {}) {
+    const values = [];
+    const whereClause = buildWhereClause(filters, values);
+    const sortOrder = filters.sort === 'oldest' ? 'ASC' : 'DESC';
+
     const sql = `
       SELECT
         id,
@@ -11,13 +44,51 @@ const proposalPostgresProvider = {
         votes,
         submitted_by AS "submittedBy",
         submitted_at AS "submittedAt",
-        status
+        status,
+        COALESCE(tags, ARRAY[]::TEXT[]) AS tags
       FROM proposals
-      ORDER BY submitted_at DESC;
+      ${whereClause}
+      ORDER BY submitted_at ${sortOrder};
+    `;
+
+    const { rows } = await pgPool.query(sql, values);
+    return rows;
+  },
+
+  async getById(id) {
+    const sql = `
+      SELECT
+        id,
+        title,
+        category,
+        description,
+        votes,
+        submitted_by AS "submittedBy",
+        submitted_at AS "submittedAt",
+        status,
+        COALESCE(tags, ARRAY[]::TEXT[]) AS tags
+      FROM proposals
+      WHERE id = $1
+      LIMIT 1;
+    `;
+
+    const { rows } = await pgPool.query(sql, [id]);
+    return rows[0] || null;
+  },
+
+  async getAllTags() {
+    const sql = `
+      SELECT DISTINCT tag
+      FROM (
+        SELECT unnest(COALESCE(tags, ARRAY[]::TEXT[])) AS tag
+        FROM proposals
+      ) tag_values
+      WHERE tag IS NOT NULL AND tag <> ''
+      ORDER BY tag ASC;
     `;
 
     const { rows } = await pgPool.query(sql);
-    return rows;
+    return rows.map((row) => row.tag);
   },
 
   async getCountsByCategory() {

@@ -30,21 +30,6 @@ const dashboardController = {
       });
     }
   },
-
-  async getProposals(_req, res) {
-    try {
-      const proposals = await dashboardService.getProposals();
-      return res.status(200).json(proposals);
-    } catch (error) {
-      console.error('Dashboard proposals error:', error);
-      return res.status(500).json({
-        error:
-          process.env.NODE_ENV === 'production'
-            ? 'Failed to load proposals'
-            : error.message,
-      });
-    }
-  },
 };
 
 export default dashboardController;
