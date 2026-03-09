@@ -29,5 +29,10 @@ export default {
   async getAll() {
     const { rows } = await pgPool.query(`SELECT username, email, firstname, lastname FROM users ORDER BY username ASC`);
     return rows;
+  },
+
+  async getRecipients() {
+    const { rows } = await pgPool.query(`SELECT recipientfirstname || ' ' || recipientlastname AS name, recipientemail AS email, recipientphonenumber AS phone FROM recipients ORDER BY recipientfirstname ASC`);
+    return rows;
   }
 };

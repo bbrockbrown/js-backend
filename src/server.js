@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import express from 'express';
 
 import authRoutes from './routes/authRoutes.js';
+import authMiddleware from './middleware/authMiddleware.js';
+import userRepository from './repositories/userRepository.js';
+import { pgPool } from './config/database.js';
 
 dotenv.config();
 
@@ -42,6 +45,18 @@ app.use('/auth', authRoutes);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+app.get('/get-contacts', async (req, res) => {
+  try {
+    console.log('Fetching contacts...');
+    const contacts = await userRepository.getRecipients();
+    console.log('Contacts fetched:', contacts.length);
+    res.status(200).json({ data: contacts });
+  } catch (error) {
+    console.error('Get contacts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // eslint-disable-next-line no-unused-vars
